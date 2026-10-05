@@ -1,0 +1,6 @@
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#root{width:100%;min-height:100%;margin:0;padding:0}
+html{background:#f5f7ff}
+body{min-width:320px;min-height:100vh;background:#f5f7ff;color:#11152b;font-family:'Space Grotesk',system-ui,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,textarea,select{font:inherit}button{appearance:none;-webkit-appearance:none}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #7257ff;outline-offset:2px}a{color:inherit;text-decoration:none}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#eef0f7}::-webkit-scrollbar-thumb{background:#c7cce0;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#7257ff}
