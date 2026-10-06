@@ -1,4 +1,5 @@
 from typing import Any
+import re
 
 from ..knowledge.engine import knowledge_engine
 from ..memory.engine import MemoryEngine
@@ -175,8 +176,20 @@ class CitizenAgent:
     # SYMBOLIC REASONING
     # ============================================================
 
-    def _symbolic_reasoning(self, citizen, world):
+    def _symbolic_reasoning(self, citizen, world, situation=""):
         facts = self._build_facts(citizen, world)
+
+        situation_text = (situation or "").lower()
+        situation_rules = []
+        if any(word in situation_text for word in ["fire", "burning", "flame", "smoke", "explosion", "attack", "danger", "emergency", "threat", "accident", "earthquake", "flood"]):
+            facts.add("external_danger_detected")
+            situation_rules.append("The user-provided situation contains an immediate external danger.")
+        elif any(word in situation_text for word in ["hungry", "food", "meal", "restaurant"]):
+            facts.add("external_food_context")
+            situation_rules.append("The user-provided situation concerns food.")
+        elif any(word in situation_text for word in ["lost", "stranded", "cannot find", "where am i"]):
+            facts.add("external_navigation_problem")
+            situation_rules.append("The user-provided situation concerns navigation or being lost.")
 
         inference = rule_engine.infer(
             facts=facts,
@@ -311,8 +324,13 @@ class CitizenAgent:
                 heuristic=heuristic,
             )
 
+        if "external_danger_detected" in facts:
+            goal = "citizen_safe"
+            plan = {"steps": [{"action": "assess_danger", "reason": "Identify the immediate threat."}, {"action": "seek_safety", "reason": "Move away from the danger."}, {"action": "remain_safe", "reason": "Avoid returning until conditions improve."}]}
+
         return {
             "facts": sorted(all_facts),
+            "situation_rules": situation_rules,
             "new_facts": inference["new_facts"],
             "goal": goal,
             "plan": plan,
@@ -402,6 +420,7 @@ class CitizenAgent:
         symbolic = self._symbolic_reasoning(
             citizen=citizen,
             world=world,
+            situation=situation,
         )
 
         # --------------------------------------------------------
@@ -460,8 +479,10 @@ PERCEIVE
 → ACT
 → LEARN
 
-CURRENT SITUATION
+CURRENT SITUATION (HIGH-PRIORITY EXTERNAL CONTEXT)
 {situation}
+
+The situation above is an explicit scenario supplied by the user. It MUST influence the decision. If it describes an immediate danger, emergency, threat, accident, fire, attack, flood, earthquake, or other external hazard, prioritize responding to that situation over routine needs such as hunger, money, or social activity. Do not ignore the situation merely because the citizen has another internal need.
 
 {context}
 
@@ -522,6 +543,12 @@ LEARNING: <what the citizen should remember from this situation>
         # --------------------------------------------------------
         # 8. FALLBACK
         # --------------------------------------------------------
+
+        situation_action = self._situation_action(situation)
+        if situation_action:
+            action = situation_action
+            reason = self._situation_reason(situation, citizen, situation_action)
+            plan_text = "Prioritize the external situation, respond to the immediate condition, and then reassess personal needs."
 
         if not action:
             action = self._fallback_action(
@@ -639,6 +666,31 @@ LEARNING: <what the citizen should remember from this situation>
             citizen=citizen,
             world=world,
         )
+
+    # ============================================================
+    # EXTERNAL SITUATION PRIORITY
+    # ============================================================
+
+    @staticmethod
+    def _situation_action(situation: str):
+        text = (situation or "").lower()
+        if any(word in text for word in ["fire", "burning", "flame", "smoke", "explosion", "attack", "danger", "emergency", "threat", "accident", "earthquake", "flood", "building is collapsing", "collapse"]):
+            return "seek_safety"
+        if any(word in text for word in ["lost", "stranded", "cannot find", "where am i"]):
+            return "explore"
+        if any(word in text for word in ["food", "meal", "restaurant", "hungry"]):
+            return "find_food"
+        return ""
+
+    @staticmethod
+    def _situation_reason(situation: str, citizen, action: str):
+        if action == "seek_safety":
+            return f"{citizen.name} must respond to the external situation first. The scenario indicates a possible immediate hazard, so safety takes priority over routine personal needs."
+        if action == "find_food":
+            return f"{citizen.name} treats the user-provided situation as food-related and responds to that context before unrelated routine activity."
+        if action == "explore":
+            return f"{citizen.name} responds to the user-provided navigation problem by investigating the environment."
+        return f"{citizen.name} is responding to the explicit situation provided by the user."
 
     # ============================================================
     # FIELD PARSER
