@@ -573,14 +573,135 @@ Matched terms: {", ".join(result["matched_terms"])}
                 importance=0.9, document_id="live_decisions",
             )
 
+    def _find_named_citizens(self, query: str, citizens: list[Any]) -> list[Any]:
+        """Find citizens mentioned in a natural-language question."""
+        normalized = re.sub(r"[^a-z0-9_ ]+", " ", query.lower())
+        tokens = set(normalized.split())
+        matches = []
+        for citizen in citizens:
+            name_tokens = self._tokenize(citizen.name)
+            if name_tokens and name_tokens.issubset(tokens):
+                matches.append(citizen)
+            elif citizen.id.lower() in normalized:
+                matches.append(citizen)
+        return matches
+
+    def _answer_live_question(self, query: str, world, citizens, events, decisions):
+        """Answer broad live-state questions without requiring a hard-coded question."""
+        q = query.lower().strip()
+        named = self._find_named_citizens(q, citizens)
+
+        if named:
+            citizen = named[0]
+            if len(named) > 1 and any(word in q for word in ["who", "which", "their"]):
+                return (
+                    "I found multiple citizens matching that name: "
+                    + ", ".join(f"{c.name} ({c.id})" for c in named[:8])
+                    + ". Please use the citizen ID to disambiguate."
+                )
+
+            responses = []
+            field_map = [
+                (["age", "old"], f"{citizen.name} is {citizen.age} years old."),
+                (["work", "job", "occupation", "role"], f"{citizen.name} works as a {citizen.occupation}."),
+                (["location", "where"], f"{citizen.name} is currently in {citizen.location_id}."),
+                (["action", "doing", "currently doing"], f"{citizen.name} is currently {citizen.current_action}."),
+                (["plan"], f"{citizen.name}'s current plan is: " + (", ".join(citizen.current_plan) if citizen.current_plan else "no active plan") + "."),
+                (["goal", "goals"], f"{citizen.name}'s goals are: " + ("; ".join(citizen.goals) if citizen.goals else "no goals recorded") + "."),
+                (["belief", "beliefs"], f"{citizen.name}'s beliefs include: " + ("; ".join(citizen.beliefs) if citizen.beliefs else "no beliefs recorded") + "."),
+                (["skill", "skills", "good at"], f"{citizen.name}'s skills are: " + (", ".join(f"{k} {v:.0f}/100" for k, v in citizen.skills.items()) if citizen.skills else "no skills recorded") + "."),
+                (["personality", "personality traits"], f"{citizen.name}'s personality scores are " + ", ".join(f"{k} {v:.0f}/100" for k, v in citizen.personality.model_dump().items()) + "."),
+                (["memory", "memories", "remember"], f"{citizen.name}'s recent memories are: " + ("; ".join(m.content for m in citizen.memories[-5:]) if citizen.memories else "no memories recorded") + "."),
+                (["relationship", "relationships", "friends"], f"{citizen.name} has {len(citizen.relationships)} recorded relationships."),
+                (["need", "needs", "hungry", "energy", "social", "money", "safe", "safety"], f"{citizen.name}'s current needs are hunger {citizen.needs.hunger:.1f}, energy {citizen.needs.energy:.1f}, social {citizen.needs.social:.1f}, money {citizen.needs.money:.1f}, safety {citizen.needs.safety:.1f}."),
+            ]
+            for keywords, response in field_map:
+                if any(keyword in q for keyword in keywords):
+                    responses.append(response)
+            if responses:
+                return " ".join(dict.fromkeys(responses))
+            return (
+                f"{citizen.name} is {citizen.age} years old, works as a {citizen.occupation}, "
+                f"is in {citizen.location_id}, and is currently {citizen.current_action}. "
+                f"They have {len(citizen.goals)} goals, {len(citizen.memories)} memories, "
+                f"and {len(citizen.relationships)} recorded relationships."
+            )
+
+        if citizens:
+            if any(k in q for k in ["oldest", "eldest"]):
+                c = max(citizens, key=lambda x: x.age)
+                return f"The oldest active citizen is {c.name}, age {c.age}, a {c.occupation} in {c.location_id}."
+            if any(k in q for k in ["youngest"]):
+                c = min(citizens, key=lambda x: x.age)
+                return f"The youngest active citizen is {c.name}, age {c.age}, a {c.occupation} in {c.location_id}."
+            if any(k in q for k in ["richest", "most money", "highest money"]):
+                c = max(citizens, key=lambda x: x.needs.money)
+                return f"{c.name} currently has the highest money score at {c.needs.money:.1f}."
+            if any(k in q for k in ["most energetic", "highest energy"]):
+                c = max(citizens, key=lambda x: x.needs.energy)
+                return f"{c.name} currently has the highest energy at {c.needs.energy:.1f}."
+            if any(k in q for k in ["most hungry", "hungriest", "highest hunger"]):
+                c = max(citizens, key=lambda x: x.needs.hunger)
+                return f"{c.name} currently has the highest hunger score at {c.needs.hunger:.1f}."
+            if any(k in q for k in ["occupations", "jobs", "professions"]):
+                counts = {}
+                for c in citizens:
+                    counts[c.occupation] = counts.get(c.occupation, 0) + 1
+                ordered = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+                return "Occupation distribution: " + ", ".join(f"{job} {count}" for job, count in ordered) + "."
+            if any(k in q for k in ["locations", "areas", "where do citizens live"]):
+                counts = {}
+                for c in citizens:
+                    counts[c.location_id] = counts.get(c.location_id, 0) + 1
+                ordered = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+                return "Citizen distribution by location: " + ", ".join(f"{location} {count}" for location, count in ordered) + "."
+
+        if world is not None:
+            if any(k in q for k in ["time", "clock", "hour", "minute"]):
+                return f"AETHER time is Day {world.day}, {world.hour:02d}:{world.minute:02d}."
+            if any(k in q for k in ["civilization", "world", "system", "what is aether", "how does aether work"]):
+                return (
+                    f"AETHER is an artificial civilization with {world.population} citizens. "
+                    "It simulates citizens, locations, resources, events, decision-making, "
+                    "memory, knowledge retrieval, planning, action and learning."
+                )
+
+        if events and any(k in q for k in ["event", "happened", "history", "recent"]):
+            return "Recent events: " + " | ".join(str(e.get("message", e)) for e in events[-10:])
+
+        if decisions and any(k in q for k in ["decision", "decisions", "chose", "chosen"]):
+            return "Recent AI decisions: " + " | ".join(f"{d.get('citizen','Citizen')} chose {d.get('action','unknown')}" for d in decisions[-10:])
+
+        return None
+
     def answer_question(self, query: str, world=None, citizens=None, events=None, decisions=None):
-        """Answer a live civilization question with grounded data first, then local AI."""
+        """Answer natural-language questions using live state, RAG and local AI."""
         self.sync_live_knowledge(world, citizens or [], events or [], decisions or [])
         citizens = citizens or []
         events = events or []
         decisions = decisions or []
         q = query.lower().strip()
         resources = {r.name.lower(): r for r in (world.resources if world else [])}
+
+        # First try a structured live-state answer. This makes the Knowledge
+        # page understand natural questions about any citizen or the world.
+        live_answer = self._answer_live_question(
+            query=query,
+            world=world,
+            citizens=citizens,
+            events=events,
+            decisions=decisions,
+        )
+        if live_answer is not None:
+            answer = live_answer
+            results = self.query_rag(query, limit=8)
+            return {
+                "query": query,
+                "answer": answer,
+                "sources": results["results"],
+                "context": results["context"],
+                "knowledge_count": self.count(),
+            }
 
         if world is not None and any(k in q for k in [
             "how many days", "days passed", "days have passed", "days has passed",
@@ -669,6 +790,20 @@ AETHER CONTEXT:
 {context}
 Give a concise grounded answer and mention uncertainty when context is insufficient."""
                 answer = llm.generate(prompt)
+
+                # The deterministic cloud fallback is designed for cognition
+                # actions, not open-ended QA. Never show that action format as
+                # an answer to an unrelated Knowledge question.
+                raw_answer = str(answer).strip()
+                if raw_answer.upper().startswith("ACTION:"):
+                    if results["results"]:
+                        top = results["results"][:3]
+                        answer = "Based on AETHER knowledge:\n\n" + "\n\n".join(
+                            f"**{item['title']}** — {item['content']}"
+                            for item in top
+                        )
+                    else:
+                        answer = "AETHER does not currently have enough grounded knowledge to answer that question."
 
                 # Keep the answer understandable even when the local/cloud
                 # fallback returns its internal ACTION / REASON / PLAN format.
