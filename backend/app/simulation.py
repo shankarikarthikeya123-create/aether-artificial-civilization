@@ -382,6 +382,22 @@ class SimulationEngine:
                 decision
             )
 
+            # Record each citizen decision as a first-class civilization event.
+            self.events.append(
+                {
+                    "type": "decision",
+                    "message": f"{citizen.name} ({citizen.occupation}) chose {action}.",
+                    "citizen_id": citizen.id,
+                    "citizen": citizen.name,
+                    "occupation": citizen.occupation,
+                    "action": action,
+                    "result": result,
+                    "reason": self._decision_reason(citizen, perception, action),
+                    "tick": self.tick_count,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
             self.total_decisions += 1
 
         # =====================================================

@@ -715,6 +715,29 @@ function formatCognitiveValue(value: unknown): string {
   }
 }
 
+function humanizeEvent(event: string): string {
+  try {
+    const parsed = JSON.parse(event) as {
+      type?: string;
+      message?: string;
+      citizen?: string;
+      occupation?: string;
+      action?: string;
+      result?: string;
+      reason?: string;
+      workflow_id?: string;
+    };
+    if (parsed.citizen && parsed.action) {
+      const who = parsed.occupation ? parsed.citizen + " · " + parsed.occupation.replaceAll("_", " ") : parsed.citizen;
+      const result = parsed.result ? " " + parsed.result : "";
+      const why = parsed.reason ? " " + parsed.reason : "";
+      return who + " → " + parsed.action.replaceAll("_", " ") + "." + result + why;
+    }
+    if (parsed.workflow_id) return (parsed.message ?? "Automation completed.") + " · Workflow: " + parsed.workflow_id;
+    return parsed.message ?? event;
+  } catch { return event; }
+}
+
 function humanizeCognitionTerm(value: string): string {
   return value
     .replaceAll("_", " ")
@@ -2265,7 +2288,7 @@ function App() {
                           </span>
 
                           <p>
-                            {event}
+                            {humanizeEvent(event)}
                           </p>
                         </div>
                       </div>
