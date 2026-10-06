@@ -120,7 +120,9 @@ type CognitionResult = {
     world?: { day?: number; time?: string; population?: number; resources?: Record<string, { amount?: number; capacity?: number; percentage?: number }>; recent_events?: string[] };
   };
   memories?: Memory[];
+  memory?: { retrieved?: Memory[]; new_memory?: Memory };
   knowledge?: string;
+  rag?: { query?: string; results?: Array<Record<string, unknown>> };
   symbolic_reasoning?: {
     facts?: string[];
     new_facts?: Array<{ rule?: string; conditions?: string[]; conclusion?: string }>;
@@ -713,6 +715,12 @@ function formatCognitiveValue(value: unknown): string {
   }
 }
 
+function humanizeCognitionTerm(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+}
+
 function App() {
   const [page, setPage] =
     useState<NavItem>("command");
@@ -1121,7 +1129,10 @@ function App() {
       const data =
         await response.json();
 
-      setCognition(data);
+      // The API wraps the cognitive result inside \"reasoning\".
+      // Normalize it here so the UI can render the real perception,
+      // memory, RAG, reasoning, planning, decision and learning data.
+      setCognition(data.reasoning ?? data);
     } catch {
       setError(
         "Cognition engine failed to respond.",
@@ -1892,47 +1903,53 @@ function App() {
 
                         <div className="reasoning-grid">
                           <div>
-                            <span>
-                              PERCEPTION
-                            </span>
-
+                            <span>WHAT AETHER SEES</span>
                             <p>
                               {(() => {
                                 const needs = cognition.perception?.needs;
                                 const world = cognition.perception?.world;
-                                if (Number(needs?.hunger ?? 0) >= 70) return "Hunger is high. The citizen needs food.";
-                                if (Number(needs?.energy ?? 100) <= 30) return "Energy is low. The citizen needs rest.";
-                                if (Number(needs?.social ?? 100) <= 30) return "Social need is low. The citizen should seek interaction.";
-                                return `Citizen is stable at day ${world?.day ?? "?"}, ${world?.time ?? "--:--"}.`;
+                                const citizen = cognition.perception?.citizen;
+                                const urgent: string[] = [];
+                                if (Number(needs?.hunger ?? 0) >= 70) urgent.push(`hunger is high (${Number(needs?.hunger).toFixed(0)}/100)`);
+                                if (Number(needs?.energy ?? 100) <= 30) urgent.push(`energy is low (${Number(needs?.energy).toFixed(0)}/100)`);
+                                if (Number(needs?.social ?? 100) <= 30) urgent.push(`social need is low (${Number(needs?.social).toFixed(0)}/100)`);
+                                if (Number(needs?.safety ?? 100) <= 30) urgent.push(`safety is low (${Number(needs?.safety).toFixed(0)}/100)`);
+                                const state = urgent.length
+                                  ? `The main concern is that ${urgent.join(", and ")}.`
+                                  : "No critical personal need is detected right now, so the citizen can continue normal activity.";
+                                return `${citizen?.name ?? "The citizen"} is a ${citizen?.occupation ?? "citizen"} in ${citizen?.location ?? "an unknown location"}. ${state} AETHER is currently on day ${world?.day ?? "?"} at ${world?.time ?? "--:--"}.`;
                               })()}
                             </p>
                           </div>
 
                           <div>
-                            <span>
-                              SYMBOLIC
-                              REASONING
-                            </span>
+                            <span>NEEDS AT A GLANCE</span>
+                            <p>
+                              {(() => {
+                                const n = cognition.perception?.needs;
+                                return `Hunger ${Number(n?.hunger ?? 0).toFixed(0)}/100 · Energy ${Number(n?.energy ?? 0).toFixed(0)}/100 · Social ${Number(n?.social ?? 0).toFixed(0)}/100 · Safety ${Number(n?.safety ?? 0).toFixed(0)}/100 · Money ${Number(n?.money ?? 0).toFixed(0)}`;
+                              })()}
+                            </p>
+                          </div>
 
+                          <div>
+                            <span>WHAT AETHER FOUND</span>
                             <p>
                               {(() => {
                                 const symbolic = cognition.symbolic_reasoning;
-                                const facts = symbolic?.facts ?? [];
-                                const inferred = (symbolic?.new_facts ?? []).map((item) => item.conclusion).filter(Boolean);
-                                const goal = symbolic?.goal?.replaceAll("_", " ");
-                                return inferred.length
-                                  ? `Facts: ${facts.filter((fact) => fact !== "population_active").join(", ")}. Inferred: ${inferred.join(", ")}. Goal: ${goal}.`
-                                  : `Facts indicate the citizen should ${goal ?? "maintain wellbeing"}.`;
+                                const facts = (symbolic?.facts ?? []).filter((fact) => fact !== "population_active");
+                                const inferred = (symbolic?.new_facts ?? []).map((item) => item.conclusion).filter(Boolean) as string[];
+                                const goal = symbolic?.goal ? humanizeCognitionTerm(symbolic.goal) : "Maintain wellbeing";
+                                if (!facts.length && !inferred.length) return `No urgent rule was triggered. The immediate goal is to ${goal.toLowerCase()}.`;
+                                const found = facts.slice(0, 3).map(humanizeCognitionTerm);
+                                const conclusions = inferred.slice(0, 3).map(humanizeCognitionTerm);
+                                return `AETHER detected ${found.length ? found.join(", ") : "no critical warning"}. Its rules then concluded ${conclusions.length ? conclusions.join(", ") : "that wellbeing should be maintained"}.`;
                               })()}
                             </p>
                           </div>
 
                           <div>
-                            <span>
-                              BAYESIAN
-                              INFERENCE
-                            </span>
-
+                            <span>PROBABILITY CHECK</span>
                             <p>
                               {(() => {
                                 const bayesian = cognition.symbolic_reasoning?.bayesian;
@@ -1940,29 +1957,34 @@ function App() {
                                 const key = bayesian?.most_likely;
                                 const probability = key ? Number(posterior[key]) : NaN;
                                 return key
-                                  ? `${key.replaceAll("_", " ")} is most likely (${Number.isFinite(probability) ? (probability * 100).toFixed(0) : "?"}% posterior probability).`
-                                  : "Bayesian assessment found no dominant resource condition.";
+                                  ? `AETHER estimates “${humanizeCognitionTerm(key)}” as the most likely condition, with about ${Number.isFinite(probability) ? (probability * 100).toFixed(0) : "?"}% probability.`
+                                  : "No strong resource shortage was detected, so AETHER is treating the situation as normal.";
                               })()}
                             </p>
                           </div>
 
                           <div>
-                            <span>
-                              FINAL REASONING
-                            </span>
-
+                            <span>WHY THIS ACTION?</span>
                             <p>
                               {cognition.decision?.reason ??
-                                `The citizen selected ${(cognition.decision?.action ?? "an appropriate action").replaceAll("_", " ")} because its current needs and symbolic analysis indicate that this is the best next step.`}
+                                `AETHER chose ${humanizeCognitionTerm(cognition.decision?.action ?? "an appropriate action")} because it best matches the citizen's current needs.`}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span>MEMORY + KNOWLEDGE</span>
+                            <p>
+                              {(() => {
+                                const memoryCount = cognition.memory?.retrieved?.length ?? cognition.memories?.length ?? 0;
+                                const ragCount = cognition.rag?.results?.length ?? 0;
+                                return `AETHER checked ${memoryCount} relevant past experience${memoryCount === 1 ? "" : "s"} and ${ragCount} knowledge result${ragCount === 1 ? "" : "s"} before deciding.`;
+                              })()}
                             </p>
                           </div>
                         </div>
 
                         <div className="plan-block">
-                          <span>
-                            GENERATED PLAN
-                          </span>
-
+                          <span>STEP-BY-STEP PLAN</span>
                           <ol>
                             {(() => {
                               const steps = cognition.symbolic_reasoning?.plan?.steps ?? [];
@@ -1970,7 +1992,7 @@ function App() {
                               if (steps.length) {
                                 return steps.map((step, index) => (
                                   <li key={index}>
-                                    <strong>{(step.action ?? "action").replaceAll("_", " ")}</strong>
+                                    <strong>{humanizeCognitionTerm(step.action ?? "action")}</strong>
                                     {step.description ? ` — ${step.description}` : ""}
                                   </li>
                                 ));
@@ -1980,16 +2002,20 @@ function App() {
                                   .split(/\s*→\s*|\s*;\s*/)
                                   .filter(Boolean)
                                   .map((step, index) => (
-                                    <li key={index}>{step.replaceAll("_", " ")}</li>
+                                    <li key={index}>{humanizeCognitionTerm(step)}</li>
                                   ));
                               }
-                              return (
-                                <li>
-                                  Fallback plan: choose the next action required to satisfy the citizen's highest-priority need.
-                                </li>
-                              );
+                              return <li>Monitor the citizen's needs and choose the next useful action.</li>;
                             })()}
                           </ol>
+                        </div>
+
+                        <div className="plan-block">
+                          <span>WHAT THE CITIZEN LEARNS</span>
+                          <p>
+                            {cognition.decision?.learning ??
+                              "The experience is stored as a memory so future decisions can use what happened here."}
+                          </p>
                         </div>
                       </div>
                     </div>
