@@ -582,7 +582,18 @@ Matched terms: {", ".join(result["matched_terms"])}
         q = query.lower().strip()
         resources = {r.name.lower(): r for r in (world.resources if world else [])}
 
-        if world is not None and any(k in q for k in ["population", "how many citizens", "number of citizens"]):
+        if world is not None and any(k in q for k in [
+            "how many days", "days passed", "days have passed", "days has passed",
+            "how long", "how old", "age of the civilization", "age of civilization",
+            "what day", "current day", "simulation day", "civilization day",
+        ]):
+            elapsed_days = max(0, int(world.day))
+            day_word = "day" if elapsed_days == 1 else "days"
+            answer = (
+                f"AETHER is currently on simulation Day {elapsed_days}. "
+                f"{elapsed_days} simulated {day_word} have passed since the civilization began."
+            )
+        elif world is not None and any(k in q for k in ["population", "how many citizens", "number of citizens"]):
             answer = f"AETHER currently has {world.population} citizens."
         elif world is not None and any(k in q for k in ["resource", "food", "water", "energy", "money"]):
             if any(k in q for k in ["food", "water", "energy", "money"]):
