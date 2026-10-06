@@ -2,6 +2,5 @@ fastapi
 uvicorn
 pydantic
 ollama
-langchain-core
-mcp
-crewai
+langchain-core==1.6.6
+mcp==2.0.0
