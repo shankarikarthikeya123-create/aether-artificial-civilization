@@ -587,12 +587,11 @@ class SimulationEngine:
 
         world.events = [config["label"]] + list(world.events or [])[:19]
         self._sync_locations()
-        knowledge_engine.sync_live_knowledge(
-            world,
-            self.citizen_engine.get_all(),
-            self.events,
-            self.decision_history,
-        )
+
+        # A world shock is not just a UI event. Immediately run one real
+        # cognition tick so affected citizens perceive the changed state,
+        # retrieve memory/knowledge, reason, plan, decide, act and learn.
+        reaction = self.tick(minutes=0)
 
         resources_after = {r.name: float(r.amount) for r in world.resources}
         changes = {
@@ -618,7 +617,16 @@ class SimulationEngine:
             },
             "resource_changes": changes,
             "world": world,
-            "recent_events": self.events[-8:],
+            "autonomous_response": {
+                "tick": reaction.get("tick"),
+                "decisions": reaction.get("decisions", []),
+                "recent_events": reaction.get("recent_events", [])[-12:],
+                "learning": {
+                    "updates": self.learning_updates,
+                    "q_table_size": len(self.q_learner.q),
+                },
+            },
+            "recent_events": self.events[-12:],
         }
 
     def run(self, minutes: int = 10):

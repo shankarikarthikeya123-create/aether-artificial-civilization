@@ -839,6 +839,17 @@ function App() {
     citizen_effect?: string;
     population?: { before?: number; after?: number; delta?: number };
     resource_changes?: Record<string, { before?: number; after?: number; delta?: number }>;
+    autonomous_response?: {
+      tick?: number;
+      decisions?: Array<{
+        citizen?: string;
+        occupation?: string;
+        action?: string;
+        result?: string;
+        reason?: string;
+      }>;
+      learning?: { updates?: number; q_table_size?: number };
+    };
   } | null>(null);
   const [worldEventLoading, setWorldEventLoading] = useState(false);
 
@@ -1513,6 +1524,31 @@ function App() {
                     <h3 style={{ margin: "7px 0" }}>{worldEvent.label}</h3>
                     <p style={{ margin: "0 0 12px", opacity: 0.78 }}>{worldEvent.description}</p>
                     <p style={{ margin: "0 0 14px" }}><strong>CITIZEN IMPACT:</strong> {worldEvent.citizen_effect}</p>
+
+                    {worldEvent.autonomous_response && (
+                      <div style={{ marginBottom: "14px", padding: "14px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(80,160,120,0.06)" }}>
+                        <span className="eyebrow">AUTONOMOUS CIVILIZATION RESPONSE</span>
+                        <p style={{ margin: "7px 0 10px", opacity: 0.78 }}>
+                          Shock applied → citizens perceived it → cognition ran → actions were executed → learning was updated.
+                        </p>
+                        <div style={{ display: "grid", gap: "7px" }}>
+                          {(worldEvent.autonomous_response.decisions ?? []).slice(0, 5).map((decision, index) => (
+                            <div key={`${decision.citizen ?? "citizen"}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "8px 10px", border: "1px solid rgba(255,255,255,0.07)" }}>
+                              <span>
+                                <strong>{decision.citizen ?? "Citizen"}</strong>
+                                {decision.occupation ? ` · ${decision.occupation.replaceAll("_", " ")}` : ""}
+                              </span>
+                              <span style={{ opacity: 0.82 }}>
+                                → {(decision.action ?? "observe").replaceAll("_", " ")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <small style={{ display: "block", marginTop: "10px", opacity: 0.62 }}>
+                          Cognition tick {worldEvent.autonomous_response.tick ?? "—"} · Learning updates {worldEvent.autonomous_response.learning?.updates ?? 0}
+                        </small>
+                      </div>
+                    )}
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
                       {worldEvent.population && (
