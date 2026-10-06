@@ -1322,8 +1322,11 @@ class SimulationEngine:
                 ),
             )
 
+            self._change_resource("food", -random.uniform(1.0, 3.0))
+            self._change_resource("water", -random.uniform(0.5, 1.5))
+
             result = (
-                f"{citizen.name} consumed food "
+                f"{citizen.name} consumed food and water "
                 f"and reduced hunger."
             )
 
@@ -1359,23 +1362,26 @@ class SimulationEngine:
 
         elif action == "work":
 
-            needs.money += random.uniform(
-                5,
-                20,
-            )
+            earnings = random.uniform(5, 20)
+            energy_cost = random.uniform(3, 8)
+            needs.money += earnings
+            needs.energy = max(0, needs.energy - energy_cost)
 
-            needs.energy = max(
-                0,
-                needs.energy - random.uniform(
-                    3,
-                    8,
-                ),
-            )
+            self._change_resource("energy", -random.uniform(0.5, 2.0))
+
+            if citizen.occupation == "farmer":
+                self._increase_resource("food", random.uniform(2.0, 7.0))
+            elif citizen.occupation == "engineer":
+                self._increase_resource("energy", random.uniform(1.5, 5.0))
+                self._increase_resource("water", random.uniform(0.5, 2.5))
+            elif citizen.occupation in {"builder", "mechanic"}:
+                self._increase_resource("energy", random.uniform(0.5, 2.0))
+            elif citizen.occupation == "merchant":
+                self._increase_resource("money", random.uniform(10, 40))
 
             result = (
-                f"{citizen.name} worked as a "
-                f"{citizen.occupation} "
-                f"and earned resources."
+                f"{citizen.name} worked as a {citizen.occupation}, "
+                f"spent energy and earned {earnings:.1f} personal money."
             )
 
         elif action == "research":
@@ -1867,135 +1873,47 @@ class SimulationEngine:
     def _apply_world_dynamics(self):
 
         world = self.world_engine.get_world()
+        population = max(world.population, 1)
+        citizens = [c for c in self.citizen_engine.get_all() if c.alive]
 
-        population = max(
-            world.population,
-            1,
-        )
+        # AETHER has a real economy: consumption fluctuates, while work,
+        # production and trade can replenish reserves. Therefore resources
+        # can fall during hard periods and rise during productive periods.
+        productivity = random.uniform(0.55, 1.55)
+        demand = random.uniform(0.65, 1.25)
 
-        food_consumption = (
-            population
-            * random.uniform(
-                0.3,
-                0.8,
-            )
-        )
+        self._change_resource("food", -population * random.uniform(0.12, 0.35) * demand)
+        self._change_resource("water", -population * random.uniform(0.18, 0.50) * demand)
+        self._change_resource("energy", -population * random.uniform(0.10, 0.32) * demand)
 
-        self._change_resource(
-            "food",
-            -food_consumption,
-        )
-
-        water_consumption = (
-            population
-            * random.uniform(
-                0.5,
-                1.2,
-            )
-        )
-
-        self._change_resource(
-            "water",
-            -water_consumption,
-        )
-
-        energy_consumption = (
-            population
-            * random.uniform(
-                0.3,
-                0.7,
-            )
-        )
-
-        self._change_resource(
-            "energy",
-            -energy_consumption,
-        )
-
-        farmers = sum(
-            1
-            for citizen in self.citizen_engine.get_all()
-            if (
-                citizen.alive
-                and citizen.occupation == "farmer"
-            )
-        )
+        farmers = sum(1 for c in citizens if c.occupation == "farmer")
+        engineers = sum(1 for c in citizens if c.occupation == "engineer")
+        merchants = sum(1 for c in citizens if c.occupation == "merchant")
+        researchers = sum(1 for c in citizens if c.occupation in {"researcher", "scientist"})
+        builders = sum(1 for c in citizens if c.occupation in {"builder", "mechanic"})
+        doctors = sum(1 for c in citizens if c.occupation == "doctor")
 
         if farmers:
-
-            self._increase_resource(
-                "food",
-                farmers * random.uniform(
-                    0.4,
-                    1.2,
-                ),
-            )
-
-        engineers = sum(
-            1
-            for citizen in self.citizen_engine.get_all()
-            if (
-                citizen.alive
-                and citizen.occupation == "engineer"
-            )
-        )
-
+            self._increase_resource("food", farmers * random.uniform(0.55, 1.65) * productivity)
         if engineers:
-
-            self._increase_resource(
-                "energy",
-                engineers * random.uniform(
-                    0.1,
-                    0.5,
-                ),
-            )
-
-        merchants = sum(
-            1
-            for citizen in self.citizen_engine.get_all()
-            if (
-                citizen.alive
-                and citizen.occupation == "merchant"
-            )
-        )
-
+            self._increase_resource("energy", engineers * random.uniform(0.35, 1.10) * productivity)
+            self._increase_resource("water", engineers * random.uniform(0.10, 0.45) * productivity)
+        if builders:
+            self._increase_resource("energy", builders * random.uniform(0.05, 0.25) * productivity)
         if merchants:
-
-            self._increase_resource(
-                "money",
-                merchants * random.uniform(
-                    10,
-                    40,
-                ),
-            )
-
-        researchers = sum(
-            1
-            for citizen in self.citizen_engine.get_all()
-            if (
-                citizen.alive
-                and citizen.occupation
-                in [
-                    "researcher",
-                    "scientist",
-                ]
-            )
-        )
-
+            self._increase_resource("money", merchants * random.uniform(18, 75) * productivity)
         if researchers:
+            self._increase_resource("knowledge", researchers * random.uniform(0.35, 1.35) * productivity)
+        if doctors and random.random() < 0.45:
+            self._increase_resource("knowledge", doctors * random.uniform(0.05, 0.20) * productivity)
 
-            self._increase_resource(
-                "knowledge",
-                researchers * random.uniform(
-                    0.2,
-                    0.8,
-                ),
-            )
-
-        self._increase_resource(
-            "water",
-            population * 0.05,
-        )
+        if productivity > 1.30:
+            self.events.append({
+                "type": "economic_growth",
+                "message": "AETHER entered a high-productivity period. Citizens are working hard and reserves are recovering.",
+                "tick": self.tick_count,
+                "timestamp": datetime.now().isoformat(),
+            })
 
     # =========================================================
     # RESOURCE HELPERS
