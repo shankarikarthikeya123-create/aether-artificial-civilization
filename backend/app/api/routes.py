@@ -126,6 +126,7 @@ def civilization_intelligence():
             "updates": simulation.learning_updates,
             "dataset_size": len(simulation.learning_dataset),
             "q_table_size": len(simulation.q_learner.q),
+            "recent_outcomes": simulation.learning_history[-10:],
         },
         "automation": simulation.automation_engine.get_cooldown_status(),
     }
