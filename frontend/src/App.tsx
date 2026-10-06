@@ -133,7 +133,7 @@ type CognitionResult = {
   };
   bayesian_reasoning?: string;
   plan?: string[];
-  decision?: { raw?: string; action?: string; reason?: string; plan?: string; learning?: string };
+  decision?: { raw?: string; action?: string; reason?: string; plan?: string; learning?: string; scores?: Record<string, number> };
   action?: string;
   reasoning?: string;
   [key: string]: unknown;
@@ -719,6 +719,20 @@ function humanizeCognitionTerm(value: string): string {
   return value
     .replaceAll("_", " ")
     .replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+}
+
+function explainCognitiveStage(stage: string): string {
+  const explanations: Record<string, string> = {
+    PERCEPTION: "AETHER reads this citizen's needs, identity, location and the current civilization resources.",
+    MEMORY: "AETHER recalls relevant experiences from this citizen's past so it does not reason from zero.",
+    RAG: "AETHER searches its live knowledge base for facts about resources, the world and relevant civilization state.",
+    REASONING: "AETHER applies rules, path-search algorithms and Bayesian probability to interpret the evidence.",
+    PLANNING: "AETHER turns the situation into a sequence of practical steps that could reach a goal.",
+    DECISION: "AETHER compares possible actions and selects the one that best matches the citizen's strongest current need.",
+    ACTION: "The selected action changes the citizen or the shared civilization state.",
+    LEARNING: "AETHER records the outcome so future decisions can learn from what happened.",
+  };
+  return explanations[stage] ?? "This stage contributes evidence to the citizen's cognitive loop.";
 }
 
 function App() {
@@ -1515,6 +1529,14 @@ function App() {
                   </div>
                   <span className="stream-tick">TICK {cognitiveStream?.tick ?? 0} · {cognitiveStream?.citizen ?? "AETHER"}</span>
                 </div>
+                <div className="stream-subject-note">
+                  <strong>WHO IS THINKING?</strong> {cognitiveStream?.citizen ?? "No citizen selected yet"}
+                  {cognitiveStream?.citizen_id ? ` · ${cognitiveStream.citizen_id}` : ""}
+                  <span> · Every trace below belongs to this one citizen for this tick.</span>
+                </div>
+                <div className="stream-reading-guide">
+                  <strong>HOW TO READ THIS:</strong> citizen need values are <em>pressure scores</em>; global resources show <em>amount / capacity</em>. A high energy-pressure number means the citizen is tired, not that civilization has low energy.
+                </div>
                 <CognitionPipeline
                   stages={cognitiveStream?.stages}
                   activeStage={expandedCognitiveStage}
@@ -1556,6 +1578,7 @@ function App() {
                         <em>{expandedCognitiveStage === stage.stage ? "COLLAPSE" : "INSPECT"}</em>
                       </div>
                       <small>{stage.state}</small>
+                      <p className="stage-explanation">{explainCognitiveStage(stage.stage)}</p>
                       <pre>{formatCognitiveValue(stage.value)}</pre>
                       {expandedCognitiveStage === stage.stage ? (
                         <div className="stage-inspector">
@@ -1615,6 +1638,9 @@ function App() {
                   </div>
                 </div>
 
+                <div className="stream-reading-guide resource-guide">
+                  <strong>RESOURCE SYSTEM:</strong> These are civilization-wide reserves. The first number is what AETHER currently has; the second is the maximum capacity. The percentage is current stock ÷ capacity. These are different from a citizen's personal need-pressure values.
+                </div>
                 <div className="resources-grid">
                   {resources.map(
                     (resource) => (
@@ -1930,6 +1956,7 @@ function App() {
                                 return `Hunger ${Number(n?.hunger ?? 0).toFixed(0)}/100 · Energy ${Number(n?.energy ?? 0).toFixed(0)}/100 · Social ${Number(n?.social ?? 0).toFixed(0)}/100 · Safety ${Number(n?.safety ?? 0).toFixed(0)}/100 · Money ${Number(n?.money ?? 0).toFixed(0)}`;
                               })()}
                             </p>
+                            <small>These are personal state values. Lower energy/social/safety means more pressure; lower money also means more financial pressure.</small>
                           </div>
 
                           <div>
@@ -1969,6 +1996,11 @@ function App() {
                               {cognition.decision?.reason ??
                                 `AETHER chose ${humanizeCognitionTerm(cognition.decision?.action ?? "an appropriate action")} because it best matches the citizen's current needs.`}
                             </p>
+                            {cognition.decision?.scores && (
+                              <small>
+                                Decision scores: {Object.entries(cognition.decision.scores).sort(([, a], [, b]) => Number(b) - Number(a)).map(([action, score]) => `${humanizeCognitionTerm(action)} ${Number(score).toFixed(1)}`).join(" · ")}
+                              </small>
+                            )}
                           </div>
 
                           <div>

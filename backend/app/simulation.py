@@ -254,6 +254,7 @@ class SimulationEngine:
                     citizen,
                     reasoning,
                     plan,
+                    perception,
                 )
 
                 # FAI planning can override a weak symbolic choice when
@@ -338,6 +339,8 @@ class SimulationEngine:
                 "decision": {
                     "action": action,
                     "llm_controlled": bool(llm_action),
+                    "reason": self._decision_reason(citizen, perception, action),
+                    "scores": self._decision_scores(citizen, perception),
                 },
                 "action": {
                     "result": result,
@@ -1036,78 +1039,68 @@ class SimulationEngine:
     # DECISION MAKING
     # =========================================================
 
+    def _decision_scores(self, citizen, perception):
+        """Score actions using the same snapshot shown in the cognitive trace.
+
+        Personality values are stored on a 0-100 scale, so they must be
+        normalized before they influence the decision. Immediate needs get
+        priority over curiosity/exploration preferences.
+        """
+        needs = citizen.needs
+        pressure = perception.get("need_values", {})
+        scores = {
+            "work": max(0.0, pressure.get("money", 0.0)) * 1.5,
+            "rest": max(0.0, pressure.get("energy", 0.0)) * 1.2,
+            "eat": max(0.0, pressure.get("hunger", 0.0)) * 1.2,
+            "socialize": max(0.0, pressure.get("social", 0.0)) * 1.0,
+            "research": 0.0,
+            "explore": 0.0,
+        }
+        curiosity = float(getattr(citizen.personality, "curiosity", 0)) / 100.0
+        openness = float(getattr(citizen.personality, "openness", 0)) / 100.0
+        extraversion = float(getattr(citizen.personality, "extraversion", 0)) / 100.0
+        conscientiousness = float(getattr(citizen.personality, "conscientiousness", 0)) / 100.0
+        scores["research"] += curiosity * 20.0
+        scores["explore"] += openness * 12.0
+        scores["socialize"] += extraversion * 8.0
+        scores["work"] += conscientiousness * 8.0
+
+        # Avoid random noise overwhelming an urgent physiological/economic need.
+        dominant = perception.get("dominant_need")
+        if dominant in {"money", "hunger", "energy", "social", "safety"}:
+            preferred = {
+                "money": "work",
+                "hunger": "eat",
+                "energy": "rest",
+                "social": "socialize",
+                "safety": "explore",
+            }.get(dominant)
+            if preferred:
+                scores[preferred] += 30.0
+        return scores
+
+    def _decision_reason(self, citizen, perception, action):
+        dominant = perception.get("dominant_need", "wellbeing")
+        explanations = {
+            "work": f"{citizen.name} chose work because money pressure is the strongest current need, and work can directly increase personal money.",
+            "eat": f"{citizen.name} chose eating because hunger is the strongest current need.",
+            "rest": f"{citizen.name} chose rest because low energy is the strongest current need.",
+            "socialize": f"{citizen.name} chose socializing because social pressure is the strongest current need.",
+            "research": f"{citizen.name} chose research because curiosity currently outweighs immediate needs.",
+            "explore": f"{citizen.name} chose exploration because it is the best available response to the current safety/environment state.",
+        }
+        return explanations.get(action, f"{citizen.name} chose {action} while responding to {dominant} pressure.")
+
     def _decide(
         self,
         citizen,
         reasoning,
         plan,
+        perception=None,
     ):
-
-        needs = citizen.needs
-
-        scores = {
-            "work": 0.0,
-            "rest": 0.0,
-            "eat": 0.0,
-            "socialize": 0.0,
-            "research": 0.0,
-            "explore": 0.0,
-        }
-
-        scores["eat"] += (
-            needs.hunger * 0.8
-        )
-
-        scores["rest"] += (
-            (100 - needs.energy) * 0.8
-        )
-
-        scores["socialize"] += (
-            (100 - needs.social) * 0.5
-        )
-
-        scores["work"] += (
-            max(
-                0,
-                100 - min(
-                    needs.money / 5,
-                    100,
-                ),
-            )
-            * 0.4
-        )
-
-        scores["research"] += (
-            citizen.personality.curiosity * 50
-        )
-
-        scores["explore"] += (
-            citizen.personality.openness * 30
-        )
-
-        scores["socialize"] += (
-            citizen.personality.extraversion * 20
-        )
-
-        scores["work"] += (
-            citizen.personality.conscientiousness * 15
-        )
-
-        scores["research"] += (
-            citizen.personality.curiosity * 15
-        )
-
-        for action in scores:
-
-            scores[action] += random.uniform(
-                -5,
-                5,
-            )
-
-        return max(
-            scores,
-            key=scores.get,
-        )
+        perception = perception or self._perceive(citizen)
+        scores = self._decision_scores(citizen, perception)
+        return max(scores, key=scores.get)
 
     # =========================================================
     # ACTION EXECUTION
