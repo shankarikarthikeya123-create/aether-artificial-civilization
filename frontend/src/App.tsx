@@ -784,7 +784,7 @@ function App() {
   const [knowledgeSources, setKnowledgeSources] = useState<string[]>([]);
   const [knowledgeAsking, setKnowledgeAsking] = useState(false);
   const [intelligence, setIntelligence] = useState<{
-    learning?: { updates?: number; dataset_size?: number; q_table_size?: number };
+    learning?: { updates?: number; dataset_size?: number; q_table_size?: number; recent_outcomes?: Array<{ message?: string; productive?: boolean }> };
     knowledge?: { total_documents?: number; types?: Record<string, number> };
     events?: Array<{ type?: string; message?: string; tick?: number }>;
     decisions?: Array<{ citizen?: string; action?: string; result?: string }>;
@@ -2310,6 +2310,7 @@ function App() {
                     </div>
                   </div>
                   <div className="signals-panel">
+                    {(intelligence.learning?.recent_outcomes ?? []).slice().reverse().slice(0, 4).map((o, i) => (<div className="signal-row" key={`resource-${i}`}><span className="signal-time">R{i + 1}</span><span className="signal-dot" /><span><strong>{o.productive ? "PRODUCTIVE" : "CONSUMPTION"}</strong> · {o.message ?? "Resource outcome recorded."}</span></div>))}
                     {(intelligence.decisions ?? []).slice().reverse().slice(0, 8).map((d, i) => (
                       <div className="signal-row" key={i}>
                         <span className="signal-time">{String(i + 1).padStart(2, "0")}</span>
