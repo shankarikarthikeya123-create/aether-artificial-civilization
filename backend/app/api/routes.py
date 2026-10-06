@@ -367,6 +367,11 @@ def simulation_event(event_key: str = Query(..., min_length=1)):
         raise HTTPException(status_code=400, detail=str(error))
 
 
+@router.post("/simulation/restore-baseline")
+def simulation_restore_baseline():
+    return get_simulation().restore_baseline()
+
+
 @router.post("/simulation/tick")
 def simulation_tick(
     minutes: int = Query(

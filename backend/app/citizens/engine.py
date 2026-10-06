@@ -54,10 +54,11 @@ class CitizenEngine:
     def __init__(self, population: int = 100):
         self.citizens = self._generate_population(population)
 
-    def _generate_population(self, population: int):
+    def _generate_population(self, population: int, start_index: int = 0):
         citizens = []
 
-        for index in range(population):
+        for offset in range(population):
+            index = start_index + offset
 
             first_name = random.choice(self.FIRST_NAMES)
             last_name = random.choice(self.LAST_NAMES)
@@ -125,6 +126,16 @@ class CitizenEngine:
             citizens.append(citizen)
 
         return citizens
+
+    def add_citizens(self, count: int):
+        """Create genuinely new citizens with IDs after the current population."""
+        count = max(0, int(count))
+        if count == 0:
+            return []
+        start_index = len(self.citizens)
+        new_citizens = self._generate_population(count, start_index=start_index)
+        self.citizens.extend(new_citizens)
+        return new_citizens
 
     def get_all(self):
         return self.citizens

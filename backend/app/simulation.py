@@ -1,3 +1,4 @@
+import copy
 import random
 import re
 from datetime import datetime
@@ -45,6 +46,10 @@ class SimulationEngine:
             world_engine=self.world_engine,
             memory_engine=self.memory_engine,
         )
+
+        # Immutable demo baseline used by the manual RESTORE BASELINE control.
+        self._baseline_world = copy.deepcopy(self.world_engine.get_world())
+        self._baseline_citizens = copy.deepcopy(self.citizen_engine.get_all())
 
         # Real automation engine connected to the civilization.
         self.automation_engine = AutomationEngine(
@@ -556,8 +561,34 @@ class SimulationEngine:
             if multiplier is not None:
                 resource.amount = max(0, round(resource.amount * multiplier, 2))
 
+        added_citizens = []
         if "population_multiplier" in config:
-            world.population = max(1, round(world.population * config["population_multiplier"]))
+            target_population = max(1, round(population_before * config["population_multiplier"]))
+            additional_count = max(0, target_population - len(self.citizen_engine.get_all()))
+            if additional_count:
+                added_citizens = self.citizen_engine.add_citizens(additional_count)
+                for citizen in added_citizens:
+                    self.memory_engine.remember(
+                        citizen_id=citizen.id,
+                        content=(
+                            f"I am {citizen.name}, a {citizen.occupation}. "
+                            f"I live in {citizen.location_id}."
+                        ),
+                        memory_type="semantic",
+                        importance=0.8,
+                        tags=["identity", "occupation", "origin"],
+                    )
+                    self.memory_engine.remember(
+                        citizen_id=citizen.id,
+                        content=(
+                            "I joined AETHER during a population boom and "
+                            "must adapt to a rapidly growing civilization."
+                        ),
+                        memory_type="episodic",
+                        importance=0.8,
+                        tags=["population_boom", "adaptation"],
+                    )
+            self._sync_locations()
 
         # Make the event visible to citizen cognition immediately.
         if key == "food_crisis":
@@ -614,6 +645,7 @@ class SimulationEngine:
                 "before": population_before,
                 "after": int(world.population),
                 "delta": int(world.population - population_before),
+                "new_citizens": len(added_citizens),
             },
             "resource_changes": changes,
             "world": world,
@@ -627,6 +659,39 @@ class SimulationEngine:
                 },
             },
             "recent_events": self.events[-12:],
+        }
+
+    def restore_baseline(self) -> dict[str, Any]:
+        self.world_engine.world = copy.deepcopy(self._baseline_world)
+        self.world_engine.sync_real_time()
+        self.citizen_engine.citizens = copy.deepcopy(self._baseline_citizens)
+        self.memory_engine.memories = []
+        self._initialize_memories()
+        self._sync_locations()
+        self.tick_count = 0
+        self.events = [{
+            "type": "system",
+            "message": "AETHER civilization restored to its original baseline.",
+            "tick": 0,
+            "timestamp": datetime.now().isoformat(),
+        }]
+        self.decision_history = []
+        self.total_decisions = 0
+        self.total_memories_created = 0
+        self.total_relationships = 0
+        self.total_discoveries = 0
+        self.total_crises = 0
+        self.total_career_changes = 0
+        knowledge_engine.sync_live_knowledge(
+            self.world_engine.get_world(),
+            self.citizen_engine.get_all(),
+            self.events,
+            self.decision_history,
+        )
+        return {
+            "status": "success",
+            "message": "AETHER restored to its original baseline.",
+            "population": self.world_engine.get_world().population,
         }
 
     def run(self, minutes: int = 10):

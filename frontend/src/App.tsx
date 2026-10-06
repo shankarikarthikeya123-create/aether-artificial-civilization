@@ -1041,6 +1041,31 @@ function App() {
     }
   }, []);
 
+  const restoreBaseline = async () => {
+    if (worldEventLoading) return;
+    setWorldEventLoading(true);
+    setError("");
+    try {
+      const response = await fetch(API + "/simulation/restore-baseline", {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Restore failed");
+      const data = await response.json();
+      setWorldEvent({
+        label: "BASELINE RESTORED",
+        description: data.message ?? "AETHER returned to its original civilization state.",
+        population: { before: world.population, after: Number(data.population ?? 100), delta: Number(data.population ?? 100) - world.population },
+      });
+      setTrial(null);
+      await refreshAll();
+      await loadCognitiveStream();
+    } catch {
+      setError("AETHER baseline could not be restored.");
+    } finally {
+      setWorldEventLoading(false);
+    }
+  };
+
   const triggerWorldEvent = async (eventKey: string) => {
     if (worldEventLoading) return;
     setWorldEventLoading(true);
@@ -1490,6 +1515,24 @@ function App() {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px" }}>
+                  <button
+                    onClick={() => void restoreBaseline()}
+                    disabled={worldEventLoading}
+                    style={{
+                      minHeight: "72px",
+                      padding: "14px",
+                      textAlign: "left",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      background: "rgba(10,14,14,0.72)",
+                      color: "inherit",
+                      cursor: worldEventLoading ? "wait" : "pointer",
+                      fontWeight: 800,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    <span style={{ display: "block", fontSize: "13px" }}>↺ RESTORE BASELINE</span>
+                    <small style={{ display: "block", marginTop: "7px", opacity: 0.65 }}>RETURN TO 100 CITIZENS</small>
+                  </button>
                   {[
                     ["food_crisis", "⚠️ FOOD CRISIS", "(-40%)"],
                     ["energy_grid_failure", "⚡ ENERGY GRID FAILURE", ""],
