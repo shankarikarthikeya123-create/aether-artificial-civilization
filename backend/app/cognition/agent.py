@@ -1,3 +1,6 @@
+
+
+
 from typing import Any
 import re
 
@@ -555,6 +558,23 @@ LEARNING: <what the citizen should remember from this situation>
                 citizen=citizen,
                 symbolic=symbolic,
             )
+
+        # Validate LLM choices against the citizen's actual needs.
+        # Need values use one consistent 0-100 scale: higher hunger/social/safety/money means more satisfied; energy is higher-is-better.
+        if not situation_action:
+            needs = citizen.needs
+            if action in {"find_food", "eat"} and needs.hunger < 60:
+                action = self._fallback_action(citizen=citizen, symbolic={})
+                reason = f"{citizen.name} is not sufficiently hungry, so food is not the priority."
+            elif action == "rest" and needs.energy > 45:
+                action = self._fallback_action(citizen=citizen, symbolic={})
+                reason = f"{citizen.name} has adequate energy, so rest is not the priority."
+            elif action == "socialize" and needs.social > 40:
+                action = self._fallback_action(citizen=citizen, symbolic={})
+                reason = f"{citizen.name} has adequate social wellbeing, so socializing is not the priority."
+            elif action == "seek_safety" and needs.safety > 40:
+                action = self._fallback_action(citizen=citizen, symbolic={})
+                reason = f"{citizen.name} is currently safe, so seeking safety is not the priority."
 
         if not reason:
             reason = (
