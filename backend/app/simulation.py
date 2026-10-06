@@ -409,7 +409,17 @@ class SimulationEngine:
         # WORLD DYNAMICS
         # =====================================================
 
+        before = {r.name: float(r.amount) for r in self.world_engine.get_world().resources}
         self._apply_world_dynamics()
+        after = {r.name: float(r.amount) for r in self.world_engine.get_world().resources}
+        deltas = {k: round(after[k] - v, 2) for k, v in before.items() if round(after[k] - v, 2) != 0}
+        if deltas:
+            up = [f'{k} +{v:g}' for k, v in deltas.items() if v > 0]
+            down = [f'{k} {v:g}' for k, v in deltas.items() if v < 0]
+            msg = ('Productive civilization cycle: ' + ', '.join(up) + (('; consumption: ' + ', '.join(down)) if down else '.')) if up else ('Civilization consumption cycle: ' + ', '.join(down) + '.')
+            self.events.append({'type': 'resource_growth' if up else 'resource_consumption', 'message': msg, 'resource_deltas': deltas, 'tick': self.tick_count, 'timestamp': datetime.now().isoformat()})
+            self.learning_history.append({'type': 'resource_outcome', 'tick': self.tick_count, 'resource_deltas': deltas, 'productive': bool(up), 'message': msg, 'timestamp': datetime.now().isoformat()})
+            self.learning_history = self.learning_history[-200:]
 
         # =====================================================
         # EMERGENT CIVILIZATION BEHAVIOUR
