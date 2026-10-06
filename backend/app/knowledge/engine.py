@@ -658,6 +658,27 @@ AETHER CONTEXT:
 {context}
 Give a concise grounded answer and mention uncertainty when context is insufficient."""
                 answer = llm.generate(prompt)
+
+                # Keep the answer understandable even when the local/cloud
+                # fallback returns its internal ACTION / REASON / PLAN format.
+                lines = [line.strip() for line in str(answer).splitlines() if line.strip()]
+                fields = {}
+                for line in lines:
+                    if ":" in line:
+                        key, value = line.split(":", 1)
+                        fields[key.strip().upper()] = value.strip()
+
+                if "ACTION" in fields and ("REASON" in fields or "PLAN" in fields):
+                    action = fields["ACTION"].replace("_", " ")
+                    reason = fields.get("REASON", "AETHER found this to be the safest useful next step.")
+                    plan = fields.get("PLAN")
+                    learning = fields.get("LEARNING")
+
+                    answer = f"AETHER recommends **{action}**. {reason}"
+                    if plan:
+                        answer += f" {plan}"
+                    if learning:
+                        answer += f" {learning}"
             except Exception:
                 answer = "The retrieved AETHER knowledge does not contain enough information to answer that question."
 
