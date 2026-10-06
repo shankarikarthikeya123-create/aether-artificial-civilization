@@ -593,6 +593,36 @@ Matched terms: {", ".join(result["matched_terms"])}
             answer = "Current AETHER resources: " + "; ".join(
                 f"{r.name} {r.amount:.1f}/{r.capacity:.1f}" for r in selected
             ) + "."
+        elif citizens and any(k in q for k in ["work", "works", "job", "do", "does", "occupation", "role"]):
+            # Direct citizen facts must not depend on lexical RAG or the LLM.
+            # Resolve the named citizen first, then answer from the live object.
+            normalized_q = re.sub(r"[^a-z0-9_ ]+", " ", q)
+            named = []
+            for c in citizens:
+                name_tokens = self._tokenize(c.name)
+                if name_tokens and name_tokens.issubset(set(normalized_q.split())):
+                    named.append(c)
+            if not named:
+                # Also support a citizen ID such as citizen_002.
+                named = [c for c in citizens if c.id.lower() in q]
+
+            if named:
+                c = named[0]
+                answer = (
+                    f"{c.name} currently works as a {c.occupation} in {c.location_id}. "
+                    f"Their current action is {c.current_action}."
+                )
+            else:
+                terms = self._tokenize(q)
+                matches = []
+                for c in citizens:
+                    hay = f"{c.name} {c.id} {c.occupation} {c.location_id}".lower()
+                    if any(term in hay for term in terms):
+                        matches.append(f"{c.name} ({c.occupation}, {c.location_id})")
+                answer = (
+                    "Matching citizens: " + ", ".join(matches[:12]) + "."
+                    if matches else f"AETHER has {len(citizens)} citizens; no citizen matched that query exactly."
+                )
         elif citizens and any(k in q for k in ["citizen", "people", "who", "worker", "occupation"]):
             terms = self._tokenize(q)
             matches = []
