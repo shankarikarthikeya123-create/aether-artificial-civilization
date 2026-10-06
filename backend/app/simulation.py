@@ -512,6 +512,115 @@ class SimulationEngine:
             "council": self.last_council,
         }
 
+    def apply_world_event(self, event_key: str):
+        """Apply a major civilization event and return its measurable consequences."""
+        key = str(event_key).strip().lower().replace(" ", "_")
+        world = self.world_engine.get_world()
+        resources_before = {r.name: float(r.amount) for r in world.resources}
+        population_before = int(world.population)
+
+        effects = {
+            "food_crisis": {
+                "label": "FOOD CRISIS",
+                "description": "Food production and reserves fall sharply.",
+                "resource_multipliers": {"food": 0.60},
+                "citizen_effect": "Hunger pressure increased across the civilization.",
+            },
+            "energy_grid_failure": {
+                "label": "ENERGY GRID FAILURE",
+                "description": "A major grid failure reduces available energy.",
+                "resource_multipliers": {"energy": 0.50},
+                "citizen_effect": "Energy-dependent activity becomes harder and recovery pressure rises.",
+            },
+            "economic_market_crash": {
+                "label": "ECONOMIC MARKET CRASH",
+                "description": "A severe market shock destroys part of the circulating wealth.",
+                "resource_multipliers": {"money": 0.60},
+                "citizen_effect": "Financial pressure rises, especially for merchants and low-money citizens.",
+            },
+            "population_boom": {
+                "label": "POPULATION BOOM",
+                "description": "A sudden population surge increases civilization-wide demand.",
+                "population_multiplier": 1.50,
+                "citizen_effect": "Food, water, energy and housing demand increase with population pressure.",
+            },
+        }
+
+        if key not in effects:
+            raise ValueError(f"Unknown civilization event: {event_key}")
+
+        config = effects[key]
+
+        for resource in world.resources:
+            multiplier = config.get("resource_multipliers", {}).get(resource.name)
+            if multiplier is not None:
+                resource.amount = max(0, round(resource.amount * multiplier, 2))
+
+        if "population_multiplier" in config:
+            world.population = max(1, round(world.population * config["population_multiplier"]))
+
+        # Make the event visible to citizen cognition immediately.
+        if key == "food_crisis":
+            for citizen in self.citizen_engine.get_all():
+                citizen.needs.hunger = min(100, citizen.needs.hunger + 25)
+        elif key == "energy_grid_failure":
+            for citizen in self.citizen_engine.get_all():
+                citizen.needs.energy = max(0, citizen.needs.energy - 25)
+        elif key == "economic_market_crash":
+            for citizen in self.citizen_engine.get_all():
+                citizen.needs.money = max(0, round(citizen.needs.money * 0.60, 2))
+        elif key == "population_boom":
+            for citizen in self.citizen_engine.get_all():
+                citizen.needs.hunger = min(100, citizen.needs.hunger + 10)
+                citizen.needs.social = max(0, citizen.needs.social - 5)
+
+        self.total_crises += 1 if key != "population_boom" else 0
+        self.events.append({
+            "type": "crisis" if key != "population_boom" else "population",
+            "event_key": key,
+            "label": config["label"],
+            "message": config["description"],
+            "citizen_effect": config["citizen_effect"],
+            "tick": self.tick_count,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        world.events = [config["label"]] + list(world.events or [])[:19]
+        self._sync_locations()
+        knowledge_engine.sync_live_knowledge(
+            world,
+            self.citizen_engine.get_all(),
+            self.events,
+            self.decision_history,
+        )
+
+        resources_after = {r.name: float(r.amount) for r in world.resources}
+        changes = {
+            name: {
+                "before": resources_before[name],
+                "after": resources_after[name],
+                "delta": round(resources_after[name] - resources_before[name], 2),
+            }
+            for name in resources_before
+            if resources_before[name] != resources_after[name]
+        }
+
+        return {
+            "status": "success",
+            "event": key,
+            "label": config["label"],
+            "description": config["description"],
+            "citizen_effect": config["citizen_effect"],
+            "population": {
+                "before": population_before,
+                "after": int(world.population),
+                "delta": int(world.population - population_before),
+            },
+            "resource_changes": changes,
+            "world": world,
+            "recent_events": self.events[-8:],
+        }
+
     def run(self, minutes: int = 10):
         """Compatibility wrapper used by the API simulation endpoint."""
         return self.tick(minutes)

@@ -358,6 +358,15 @@ def get_citizen(citizen_id: str):
 # SIMULATION
 # ============================================================
 
+@router.post("/simulation/event")
+def simulation_event(event_key: str = Query(..., min_length=1)):
+    simulation = get_simulation()
+    try:
+        return simulation.apply_world_event(event_key)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 @router.post("/simulation/tick")
 def simulation_tick(
     minutes: int = Query(

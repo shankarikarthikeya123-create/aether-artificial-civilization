@@ -833,6 +833,14 @@ function App() {
   const [trial, setTrial] =
     useState<{ scenario?: string; timeline?: Array<Record<string, number>>; start?: Record<string, number>; end?: Record<string, number>; learning?: { updates?: number; persistent_experiences?: number; q_states?: number } } | null>(null);
   const [trialLoading, setTrialLoading] = useState(false);
+  const [worldEvent, setWorldEvent] = useState<{
+    label?: string;
+    description?: string;
+    citizen_effect?: string;
+    population?: { before?: number; after?: number; delta?: number };
+    resource_changes?: Record<string, { before?: number; after?: number; delta?: number }>;
+  } | null>(null);
+  const [worldEventLoading, setWorldEventLoading] = useState(false);
 
   const selectedCitizen = useMemo(
     () =>
@@ -1021,6 +1029,25 @@ function App() {
       // Keep the last stream snapshot.
     }
   }, []);
+
+  const triggerWorldEvent = async (eventKey: string) => {
+    if (worldEventLoading) return;
+    setWorldEventLoading(true);
+    try {
+      const response = await fetch(
+        API + "/simulation/event?event_key=" + encodeURIComponent(eventKey),
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error("Event failed");
+      setWorldEvent(await response.json());
+      await refreshAll();
+      await loadCognitiveStream();
+    } catch {
+      setError("Civilization event could not be applied.");
+    } finally {
+      setWorldEventLoading(false);
+    }
+  };
 
   const runThirtyDayTrial = async () => {
     if (trialLoading) return;
@@ -1430,6 +1457,85 @@ function App() {
                   {trialLoading ? "SIMULATING 30 DAYS..." : "START 30-DAY TRIAL"}
                   <strong>↗</strong>
                 </button>
+              </section>
+
+              <section
+                style={{
+                  marginTop: "24px",
+                  padding: "22px",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "18px", alignItems: "flex-end", marginBottom: "16px" }}>
+                  <div>
+                    <span className="eyebrow">CIVILIZATION SHOCK CONTROLS</span>
+                    <h2 style={{ margin: "6px 0 4px" }}>TRIGGER A WORLD EVENT.</h2>
+                    <p style={{ margin: 0, opacity: 0.65 }}>
+                      These are live simulation interventions. AETHER must adapt and the outputs appear below.
+                    </p>
+                  </div>
+                  {worldEventLoading && <span className="live-tag">APPLYING...</span>}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px" }}>
+                  {[
+                    ["food_crisis", "⚠️ FOOD CRISIS", "(-40%)"],
+                    ["energy_grid_failure", "⚡ ENERGY GRID FAILURE", ""],
+                    ["economic_market_crash", "📉 ECONOMIC MARKET CRASH", ""],
+                    ["population_boom", "👨‍👩‍👧‍👦 POPULATION BOOM", "(+50%)"],
+                  ].map(([key, label, impact]) => (
+                    <button
+                      key={key}
+                      onClick={() => void triggerWorldEvent(key)}
+                      disabled={worldEventLoading}
+                      style={{
+                        minHeight: "72px",
+                        padding: "14px",
+                        textAlign: "left",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(10,14,14,0.72)",
+                        color: "inherit",
+                        cursor: worldEventLoading ? "wait" : "pointer",
+                        fontWeight: 800,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      <span style={{ display: "block", fontSize: "13px" }}>{label}</span>
+                      {impact && <small style={{ display: "block", marginTop: "7px", opacity: 0.65 }}>{impact}</small>}
+                    </button>
+                  ))}
+                </div>
+
+                {worldEvent && (
+                  <div style={{ marginTop: "16px", padding: "18px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.22)" }}>
+                    <span className="eyebrow">LIVE CONSEQUENCE REPORT</span>
+                    <h3 style={{ margin: "7px 0" }}>{worldEvent.label}</h3>
+                    <p style={{ margin: "0 0 12px", opacity: 0.78 }}>{worldEvent.description}</p>
+                    <p style={{ margin: "0 0 14px" }}><strong>CITIZEN IMPACT:</strong> {worldEvent.citizen_effect}</p>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px" }}>
+                      {worldEvent.population && (
+                        <div className="detail-panel">
+                          <span className="eyebrow">POPULATION</span>
+                          <strong>{worldEvent.population.before} → {worldEvent.population.after}</strong>
+                          <small>{worldEvent.population.delta! >= 0 ? "+" : ""}{worldEvent.population.delta} citizens</small>
+                        </div>
+                      )}
+                      {Object.entries(worldEvent.resource_changes ?? {}).map(([name, change]) => (
+                        <div className="detail-panel" key={name}>
+                          <span className="eyebrow">{name.toUpperCase()}</span>
+                          <strong>{Math.round(Number(change.before ?? 0))} → {Math.round(Number(change.after ?? 0))}</strong>
+                          <small>{Number(change.delta ?? 0) >= 0 ? "+" : ""}{Math.round(Number(change.delta ?? 0))} change</small>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p style={{ margin: "14px 0 0", opacity: 0.62, fontSize: "12px" }}>
+                      The result is now part of AETHER's live world state, event history and knowledge layer.
+                    </p>
+                  </div>
+                )}
               </section>
 
               <WorldMap

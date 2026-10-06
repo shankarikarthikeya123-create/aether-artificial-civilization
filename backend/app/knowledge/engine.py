@@ -826,7 +826,14 @@ Give a concise grounded answer and mention uncertainty when context is insuffici
                     if learning:
                         answer += f" {learning}"
             except Exception:
-                answer = "The retrieved AETHER knowledge does not contain enough information to answer that question."
+                if results["results"]:
+                    top = results["results"][:5]
+                    answer = "Here is the most relevant grounded AETHER knowledge I found:\n\n" + "\n\n".join(
+                        f"**{item['title']}** — {item['content']}"
+                        for item in top
+                    )
+                else:
+                    answer = "AETHER does not currently have enough grounded knowledge to answer that question."
 
         results = self.query_rag(query, limit=8)
         return {
