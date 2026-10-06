@@ -750,7 +750,44 @@ LEARNING: <what the citizen should remember from this situation>
         if goal == "energy_crisis":
             return "support_energy_response"
 
-        return "continue_daily_activity"
+        # A healthy citizen should not collapse into the same generic
+        # "observe" action. Choose a meaningful routine action from the
+        # citizen's actual state and occupation.
+        needs = getattr(citizen, "needs", None)
+        if needs:
+            if needs.hunger >= 60:
+                return "find_food"
+            if needs.energy <= 45:
+                return "rest"
+            if needs.social <= 40:
+                return "socialize"
+            if needs.safety <= 40:
+                return "seek_safety"
+            if needs.money <= 40:
+                return "work"
+
+        occupation = (getattr(citizen, "occupation", "") or "").lower()
+        occupation_actions = {
+            "software_developer": "develop",
+            "developer": "develop",
+            "researcher": "research",
+            "teacher": "teach",
+            "builder": "build",
+            "merchant": "trade",
+            "farmer": "farm",
+            "doctor": "treat_patients",
+            "engineer": "engineer",
+            "artist": "create",
+            "guard": "patrol",
+            "scientist": "research",
+            "cook": "prepare_food",
+            "mechanic": "repair",
+        }
+
+        return occupation_actions.get(
+            occupation,
+            "work",
+        )
 
     # ============================================================
     # PLAN FORMATTER
